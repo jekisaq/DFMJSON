@@ -3,15 +3,15 @@ unit DFMJSON;
 interface
 uses
    System.Classes,
-   dwsJson;
+   System.JSON;
 
-function Dfm2JSON(dfm: TStream): TdwsJSONObject; overload;
-function Dfm2JSON(const filename: string): TdwsJSONObject; overload;
-function DfmBin2JSON(dfm: TStream): TdwsJSONObject; overload;
-function DfmBin2JSON(const filename: string): TdwsJSONObject; overload;
+function Dfm2JSON(dfm: TStream): TJSONObject; overload;
+function Dfm2JSON(const filename: string): TJSONObject; overload;
+function DfmBin2JSON(dfm: TStream): TJSONObject; overload;
+function DfmBin2JSON(const filename: string): TJSONObject; overload;
 
-procedure SaveJSON2Dfm(json: TdwsJSONObject; const filename: string);
-function JSON2Dfm(json: TdwsJSONObject): string;
+procedure SaveJSON2Dfm(json: TJSONObject; const filename: string);
+function JSON2Dfm(json: TJSONObject): string;
 
 implementation
 uses
@@ -35,7 +35,7 @@ begin
   end;
 end;
 
-function ConvertHeader(parser: TParser; IsInherited, IsInline: Boolean): TdwsJSONObject;
+function ConvertHeader(parser: TParser; IsInherited, IsInline: Boolean): TJSONObject;
 var
   ClassName, ObjectName: string;
   Flags: TFilerFlags;
@@ -54,30 +54,30 @@ begin
   end;
   Flags := [];
   Position := ConvertOrderModifier(parser);
-  result := TdwsJSONObject.Create;
+  result := TJSONObject.Create;
   try
     if IsInherited then
-      result.AddValue('$Inherited', true);
+      result.AddPair('$Inherited', TJSONTrue.Create);
     if IsInline then
-      result.AddValue('$Inline', true);
+      result.AddPair('$Inline', TJSONTrue.Create);
     if Position >= 0 then
-      result.AddValue('$ChildPos', Position);
-    result.AddValue('$Class', ClassName);
+      result.AddPair('$ChildPos', TJSONNumber.Create(Position));
+    result.AddPair('$Class', ClassName);
     if ObjectName <> '' then
-      result.AddValue('$Name', ObjectName);
+      result.AddPair('$Name', ObjectName);
   except
     result.Free;
     raise;
   end;
 end;
 
-procedure ConvertProperty(parser: TParser; obj: TdwsJSONObject); forward;
+procedure ConvertProperty(parser: TParser; obj: TJSONObject); forward;
 
-function ConvertValue(parser: TParser): TdwsJSONValue;
+function ConvertValue(parser: TParser): TJSONValue;
 var
   Order: Integer;
-  arr: TdwsJSONArray;
-  sub: TdwsJSONObject;
+  arr: TJSONArray;
+  sub: TJSONObject;
   TokenStr: string;
 
   function CombineString: String;
@@ -95,8 +95,7 @@ var
 begin
   if CharInSet(Parser.Token, [System.Classes.toString, toWString]) then
   begin
-    result := TdwsJSONImmediate.Create;
-    result.AsString := QuotedStr(CombineString)
+    result := TJSONString.Create(QuotedStr(CombineString))
   end
   else
   begin
@@ -104,31 +103,29 @@ begin
       toSymbol:
       begin
         tokenStr := Parser.TokenComponentIdent;
-        result := TdwsJSONImmediate.Create;
         if tokenStr = 'True' then
-          result.AsBoolean := true
+          result := TJsonTrue.Create
         else if tokenStr = 'False' then
-          result.AsBoolean := false
-        else result.AsString := Parser.TokenComponentIdent;
+          Result := TJsonFalse.Create
+        else result := TJsonString.Create(Parser.TokenComponentIdent);
       end;
       toInteger:
       begin
-        result := TdwsJSONImmediate.Create;
-        result.AsInteger := Parser.TokenInt
+        result := TJsonNumber.Create(Parser.TokenInt)
       end;
       toFloat:
       begin
-        result := TdwsJSONObject.Create;
+        result := TJSONObject.Create;
         if parser.FloatType = #0 then
-           TdwsJSONObject(result).Add('$float', TdwsJSONImmediate.Create) //null
-        else TdwsJSONObject(result).AddValue('$float', Parser.FloatType);
-        TdwsJSONObject(result).AddValue('value', Parser.TokenFloat);
+           TJSONObject(result).AddPair('$float', TJSONNull.Create) //null
+        else TJSONObject(result).AddPair('$float', TJsonNumber(Parser.FloatType));
+        TJSONObject(result).AddPair('value', TJsonNumber.Create(Parser.TokenFloat));
       end;
       '[':
       begin
-        result := TdwsJSONObject.Create;
-        TdwsJSONObject(result).AddValue('$set', true);
-        arr := TdwsJSONObject(result).AddArray('value');
+        result := TJSONObject.Create;
+        TJSONObject(result).AddPair('$set', TJsonTrue.Create);
+        arr := TJSONArray.Create;
         Parser.NextToken;
 
         if Parser.Token <> ']' then
@@ -146,45 +143,48 @@ begin
             Parser.CheckToken(',');
             Parser.NextToken;
           end;
+        TJSONObject(result).AddPair('value', arr);
       end;
       '(':
       begin
         Parser.NextToken;
-        result := TdwsJSONArray.Create;
+        result := TJSONArray.Create;
         while Parser.Token <> ')' do
-           TdwsJSONArray(result).add(ConvertValue(parser));
+           TJSONArray(result).AddElement(ConvertValue(parser));
       end;
       '{':
       begin
         Parser.NextToken;
-        result := TdwsJSONObject.Create;
-        TdwsJSONObject(result).AddValue('$hex', true);
+        result := TJSONObject.Create;
+        TJSONObject(result).AddPair('$hex', TJSONTrue.Create);
         tokenStr := '';
         while Parser.Token <> '}' do
         begin
            tokenStr := tokenStr + parser.TokenString;
            parser.NextToken;
         end;
-        TdwsJSONObject(result).AddValue('value', tokenStr);
+        TJSONObject(result).AddPair('value', tokenStr);
       end;
       '<':
       begin
         Parser.NextToken;
-        result := TdwsJSONObject.Create;
-        TdwsJSONObject(result).AddValue('$collection', true);
-        arr := TdwsJSONObject(result).AddArray('values');
+        result := TJSONObject.Create;
+        TJSONObject(result).AddPair('$collection', TJSONTrue.Create);
+        arr := TJSONArray.Create;
         while Parser.Token <> '>' do
         begin
           Parser.CheckTokenSymbol('item');
           Parser.NextToken;
           Order := ConvertOrderModifier(parser);
-          sub := arr.AddObject;
+          sub := TJSONObject.Create;
           if Order <> -1 then
-             sub.AddValue('$order', order);
+             sub.AddPair('$order', TJSONNumber.Create(order));
           while not Parser.TokenSymbolIs('end') do
              ConvertProperty(parser, sub);
+          arr.Add(sub);
           Parser.NextToken;
         end;
+        TJSONObject(result).AddPair('values', arr);
       end;
       else begin
         Parser.Error(SInvalidProperty);
@@ -195,7 +195,7 @@ begin
   end;
 end;
 
-procedure ConvertProperty(parser: TParser; obj: TdwsJSONObject);
+procedure ConvertProperty(parser: TParser; obj: TJSONObject);
 var
   PropName: string;
 begin
@@ -211,14 +211,14 @@ begin
   end;
   Parser.CheckToken('=');
   Parser.NextToken;
-  obj.Add(propName, ConvertValue(parser));
+  obj.AddPair(propName, ConvertValue(parser));
 end;
 
-function ConvertObject(parser: TParser): TdwsJSONObject;
+function ConvertObject(parser: TParser): TJSONObject;
 var
   InheritedObject: Boolean;
   InlineObject: Boolean;
-  children: TdwsJSONArray;
+  children: TJSONArray;
 begin
   InheritedObject := False;
   InlineObject := False;
@@ -235,13 +235,14 @@ begin
     not Parser.TokenSymbolIs('INHERITED') and
     not Parser.TokenSymbolIs('INLINE') do
     ConvertProperty(parser, result);
-  children := result.AddArray('$Children');
+  children := TJSONArray.Create;
   while not Parser.TokenSymbolIs('END') do
      children.Add(ConvertObject(parser));
+  result.AddPair('$Children', children);
   Parser.NextToken;
 end;
 
-function Dfm2JSON(dfm: TStream): TdwsJSONObject;
+function Dfm2JSON(dfm: TStream): TJSONObject;
 var
   parser: TParser;
 begin
@@ -253,7 +254,7 @@ begin
   end;
 end;
 
-function Dfm2JSON(const filename: string): TdwsJSONObject;
+function Dfm2JSON(const filename: string): TJSONObject;
 var
   stream: TStringStream;
 begin
@@ -265,7 +266,7 @@ begin
   end;
 end;
 
-function DfmBin2JSON(dfm: TStream): TdwsJSONObject;
+function DfmBin2JSON(dfm: TStream): TJSONObject;
 var
    outStream: TStringStream;
 begin
@@ -278,7 +279,7 @@ begin
   end;
 end;
 
-function DfmBin2JSON(const filename: string): TdwsJSONObject;
+function DfmBin2JSON(const filename: string): TJSONObject;
 var
   stream: TFileStream;
 begin
@@ -290,7 +291,7 @@ begin
   end;
 end;
 
-procedure SaveJSON2Dfm(json: TdwsJSONObject; const filename: string);
+procedure SaveJSON2Dfm(json: TJSONObject; const filename: string);
 begin
   TFile.WriteAllText(filename, JSON2DFM(json));
 end;
@@ -302,8 +303,8 @@ begin
   result := StringOfChar(' ', depth * 2);
 end;
 
-procedure WriteJSONObject(json: TdwsJSONObject; sl: TStringList; indent: integer); forward;
-procedure WriteJSONProperty(const name: string; value: TdwsJSONValue; sl: TStringList; indent: integer); forward;
+procedure WriteJSONObject(json: TJSONObject; sl: TStringList; indent: integer); forward;
+procedure WriteJSONProperty(const name: string; value: TJSONValue; sl: TStringList; indent: integer); forward;
 
 function capitalize(value: string): string;
 begin
@@ -311,15 +312,14 @@ begin
   result := value;
 end;
 
-procedure WriteJSONArrProperty(const name: string; value: TdwsJSONArray; sl: TStringList; indent: integer);
+procedure WriteJSONArrProperty(const name: string; value: TJSONArray; sl: TStringList; indent: integer);
 
-  function GetString(value: TdwsJSONValue): string;
+  function GetString(value: TJSONValue): string;
   begin
-    case value.ValueType of
-       jvtString, jvtNumber: result := value.AsString;
-       jvtBoolean: result := capitalize(value.AsString);
-       else assert(false);
-    end;
+    if (value is TJSONTrue) or (value is TJSONFalse) then
+      result := capitalize(value.Value)
+    else
+      result := value.Value;
   end;
 
 var
@@ -327,56 +327,58 @@ var
   line: string;
 begin
   sl.Add(IndentStr(indent) + format('%s = (', [name]));
-  for i := 0 to value.ElementCount - 1 do
+  for i := 0 to value.Count - 1 do
   begin
 
-    line := IndentStr(indent + 1) + GetString(value.Elements[i]);
-    if i = value.ElementCount - 1 then
+    line := IndentStr(indent + 1) + GetString(value.Items[i]);
+    if i = value.Count - 1 then
     line := line + ')';
     sl.Add(line);
   end;
 end;
 
-procedure WriteFloatProperty(const name: string; value: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteFloatProperty(const name: string; value: TJSONObject; sl: TStringList; indent: integer);
 var
-  float, fValue: TdwsJSONValue;
-  num: single;
+  float, fValue: TJSONValue;
+  num: double;
   numVal: string;
 begin
-  float := value.Items['$float'];
-  fValue := value.Items['value'];
-  num := fValue.AsNumber;
+  float := value.Values['$float'];
+  fValue := value.Values['value'];
+  num := (fValue as TJSONNumber).AsDouble;
   if (frac(num) = 0.0) and (num.ToString.IndexOfAny(['e', 'E']) = -1) then
     numVal := num.ToString + '.000000000000000000'
   else numval := num.ToString;
+  { TODO -oLG : Have not yet discerned the purpose of this code, presently running fine without it }
+(*
   if float.ValueType = jvtUndefined then
     sl.Add(IndentStr(indent) + format('%s = %s', [name, numVal]))
-  else sl.Add(IndentStr(indent) + format('%s = %s', [name, numVal + float.AsString]));
+  else *)sl.Add(IndentStr(indent) + format('%s = %s', [name, numVal + float.Value]));
 end;
 
-procedure WriteSetProperty(const name: string; value: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteSetProperty(const name: string; value: TJSONObject; sl: TStringList; indent: integer);
 var
   i: integer;
   line: string;
-  sub: TdwsJSONArray;
+  sub: TJSONArray;
 begin
   line := '';
-  sub := value.Items['value'] as TdwsJSONArray;
-  for i := 0 to sub.ElementCount - 1 do
+  sub := value.Values['value'] as TJSONArray;
+  for i := 0 to sub.Count - 1 do
   begin
     if line = '' then
-      line := sub.Elements[i].AsString
-    else line := format('%s, %s', [line, sub.Elements[i].AsString]);
+      line := sub.Items[i].Value
+    else line := format('%s, %s', [line, sub.Items[i].Value]);
   end;
   sl.Add(IndentStr(indent) + format('%s = [%s]', [name, line]));
 end;
 
-procedure WriteHexProperty(const name: string; value: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteHexProperty(const name: string; value: TJSONObject; sl: TStringList; indent: integer);
 var
   hex, line: string;
 begin
   sl.Add(IndentStr(indent) + format('%s = {', [name]));
-  hex := value.Items['value'].AsString;
+  hex := value.Values['value'].Value;  { malkovich.Malkovich['Malkovich'].Malkovich }
   while hex <> '' do
   begin
     line := Copy(hex, 0, 64);
@@ -387,40 +389,43 @@ begin
   end;
 end;
 
-procedure WriteCollectionItem(value: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteCollectionItem(value: TJSONObject; sl: TStringList; indent: integer);
 var
   i: integer;
+  name : string;
 begin
-  if value.Items['$order'].IsDefined then
-    sl.Add(IndentStr(indent) + format('item [%d]', [value.Items['$order'].AsInteger]))
+  if Assigned(value.Values['$order']) then
+    sl.Add(IndentStr(indent) + format('item [%d]', [(value.Values['$order'] as TJsonNumber).AsInt]))
   else sl.Add(IndentStr(indent) + 'item');
-  for i := 0 to value.ElementCount - 1 do
-    if not value.Names[i].StartsWith('$') then
-      WriteJSONProperty(value.Names[i], value.Elements[i], sl, indent + 1);
+  for i := 0 to value.Count - 1 do begin
+    name := value.Pairs[i].JsonString.Value;
+    if not name.StartsWith('$') then
+      WriteJSONProperty(name, value.Values[name], sl, indent + 1);
+  end;
   sl.Add(IndentStr(indent) + 'end');
 end;
 
-procedure WriteCollection(const name: string; value: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteCollection(const name: string; value: TJSONObject; sl: TStringList; indent: integer);
 var
-  values: TdwsJSONArray;
-  sub: TdwsJSONValue;
+  values: TJSONArray;
+  sub: TJSONValue;
 begin
   sl.Add(IndentStr(indent) + format('%s = <', [name]));
-  values := value.Items['values'] as TdwsJSONArray;
+  values := value.Values['values'] as TJSONArray;
   for sub in values do
-    WriteCollectionItem(sub as TdwsJSONObject, sl, indent + 1);
+    WriteCollectionItem(sub as TJSONObject, sl, indent + 1);
   sl[sl.Count - 1] := sl[sl.Count - 1] + '>';
 end;
 
-procedure WriteJSONObjProperty(const name: string; value: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteJSONObjProperty(const name: string; value: TJSONObject; sl: TStringList; indent: integer);
 begin
-  if assigned(value.Items['$float']) then
+  if assigned(value.Values['$float']) then
     WriteFloatProperty(name, value, sl, indent)
-  else if assigned(value.Items['$set']) then
+  else if assigned(value.Values['$set']) then
     WriteSetProperty(name, value, sl, indent)
-  else if assigned(value.Items['$hex']) then
+  else if assigned(value.Values['$hex']) then
     WriteHexProperty(name, value, sl, indent)
-  else if assigned(value.Items['$collection']) then
+  else if assigned(value.Values['$collection']) then
     WriteCollection(name, value, sl, indent)
   else
     asm int 3 end;
@@ -444,11 +449,11 @@ begin
   result := String.join('#13', lines);
 end;
 
-procedure WriteStringProperty(const name: string; value: TdwsJSONValue; sl: TStringList; indent: integer);
+procedure WriteStringProperty(const name: string; value: TJSONValue; sl: TStringList; indent: integer);
 var
   str, sub: string;
 begin
-  str := value.AsString;;
+  str := value.Value;
   if str.StartsWith('''') and StringNeedsWork(str) then //66 = 64 limit + 2 quotes
   begin
     str := AnsiDequotedStr(str, '''');
@@ -465,61 +470,66 @@ begin
   else sl.Add(IndentStr(indent) + format('%s = %s', [name, str]));
 end;
 
-procedure WriteJSONProperty(const name: string; value: TdwsJSONValue; sl: TStringList; indent: integer);
+procedure WriteJSONProperty(const name: string; value: TJSONValue; sl: TStringList; indent: integer);
 begin
-  case value.ValueType of
-     jvtUndefined, jvtNull: assert(false);
-     jvtObject: WriteJSONObjProperty(name, value as TdwsJSONObject, sl, indent);
-     jvtArray: WriteJSONArrProperty(name, value as TdwsJSONArray, sl, indent);
-     jvtString: WritestringProperty(name, value, sl, indent);
-     jvtNumber: sl.Add(IndentStr(indent) + format('%s = %s', [name, value.AsString]));
-     jvtBoolean: sl.Add(IndentStr(indent) + format('%s = %s', [name, capitalize(value.AsString)]));
-  end;
+  if value is TJSONObject then
+    WriteJSONObjProperty(name, value as TJSONObject, sl, indent)
+  else if value is TJSONArray then
+    WriteJSONArrProperty(name, value as TJSONArray, sl, indent)
+  else if value is TJSONString then
+    WritestringProperty(name, value, sl, indent)
+  else if value is TJSONNumber then
+    sl.Add(IndentStr(indent) + format('%s = %s', [name, value.Value]))
+  else if (value is TJSONTrue) or (value is TJSONFalse) then
+    sl.Add(IndentStr(indent) + format('%s = %s', [name, capitalize(value.Value)]))
+  else
+    assert(False);
 end;
 
-procedure WriteJSONProperties(json: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteJSONProperties(json: TJSONObject; sl: TStringList; indent: integer);
 var
   i: integer;
   name: string;
-  children, child: TdwsJSONValue;
+  children : TJSONArray;
+  child: TJSONValue;
 begin
-  for i := 0 to json.ElementCount - 1 do
+  for i := 0 to json.Count - 1 do
   begin
-    name := json.Names[i];
+    name := json.Pairs[i].JsonString.Value;
     if not name.StartsWith('$') then
-      WriteJSONProperty(name, json.Elements[i], sl, indent);
+      WriteJSONProperty(name, json.Values[name], sl, indent);
   end;
 
-  children := json.Items['$Children'];
-  if children.IsDefined then
+  children := json.Values['$Children'] as TJSONArray;
+  if Assigned(children) then
     for child in children do
-      WriteJSONObject(child as TdwsJSONObject, sl, indent);
+      WriteJSONObject(child as TJSONObject, sl, indent);
 end;
 
-procedure WriteJSONObject(json: TdwsJSONObject; sl: TStringList; indent: integer);
+procedure WriteJSONObject(json: TJSONObject; sl: TStringList; indent: integer);
 var
   dfmType, name, cls, header: string;
 begin
-  if json.Items['$Inherited'].IsDefined then
+  if Assigned(json.Values['$Inherited']) then
     dfmType := 'inherited'
-  else if json.Items['$Inline'].IsDefined then
+  else if Assigned(json.Values['$Inline']) then
     dfmType := 'inline'
   else dfmType := 'object';
-  if json.Items['$Name'].IsDefined then
-     name := json.Items['$Name'].AsString
+  if Assigned(json.Values['$Name']) then
+     name := json.Values['$Name'].Value
   else name := '';
-  cls := json.Items['$Class'].AsString;
+  cls := json.Values['$Class'].Value;
   if name = '' then
     header := format('%s %s', [dfmType, cls])
   else header := format('%s %s: %s', [dfmType, name, cls]);
-  if json.Items['$ChildPos'].IsDefined then
-    header := format('%s [%d]', [header, json.Items['$ChildPos'].AsInteger]);
+  if Assigned(json.Values['$ChildPos']) then
+    header := format('%s [%d]', [header, (json.Values['$ChildPos'] as TJSONNumber).AsInt]);
   sl.Add(indentStr(indent) + header);
   WriteJSONProperties(json, sl, indent + 1);
   sl.add(indentStr(indent) + 'end');
 end;
 
-function JSON2Dfm(json: TdwsJSONObject): string;
+function JSON2Dfm(json: TJSONObject): string;
 var
   sl: TStringList;
 begin
