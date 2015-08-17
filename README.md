@@ -3,6 +3,6 @@ DFMJSON
 
 DFMJSON is exactly what it sounds like: a library to convert between Delphi's .DFM (or .FMX) format and JSON.  It can be used to parse a DFM file into an Abstract Syntax Tree in JSON, which can then be edited and the results turned back to DFM format.
 
-DFMJSON uses dwsJson from [DWS](https://code.google.com/p/dwscript/) to provide JSON support, so you will need to have it in order to use DFMJSON.  (The dwsJson unit is a standalone part of the DWS library, and using it does not pull the scripting engine into your project.)
+Unlike the original DFMJSON from Mason Wheeler, this version of DFMJSON has NO dependency on [DWS](https://code.google.com/p/dwscript/) and instead uses the Delphi RTL for its JSON support. There are no additional features other than this removal of the DWS dependency.
 
-DFMJSON includes a simple project called DfmJsonProcessor, which uses DFMJSON to power a scriptable bulk editor for DFM files.  Simply provide it with a path, a filename mask, and a DWS script that transforms JSON data, and it will apply the transformation script to every DFM file that matches the search criteria.  The script will have access to the parsed DFM data via a global variable called "DFM", of type JSONVariant.  Since it uses scripts to modify the data, DfmJsonProcessor does require the entire DWS scripting system.
+In fact this fork has less features than the original as the scriptable bulk editor functionality has been removed. This is because without DWS there is no scripting engine available to power it. If you want to manipulate DFM files using scripting you are better off using Mason's original version. If you're happy with using compiled Delphi code to do your DFM transformations and don't want to bother with DWS, use this version.
