@@ -1,6 +1,7 @@
 unit DFMJSON;
 
 interface
+
 uses
    System.Classes,
    System.JSON;
@@ -9,17 +10,19 @@ function Dfm2JSON(dfm: TStream): TJSONObject; overload;
 function Dfm2JSON(const filename: string): TJSONObject; overload;
 function DfmBin2JSON(dfm: TStream): TJSONObject; overload;
 function DfmBin2JSON(const filename: string): TJSONObject; overload;
+function DfmResourceToJson(ComponentStream: TStream): TJsonObject; overload;
+function DfmResourceToJson(const FileName: string): TJsonObject; overload;
 
 procedure SaveJSON2Dfm(json: TJSONObject; const filename: string);
 function JSON2Dfm(json: TJSONObject): string;
 
 implementation
+
 uses
   System.SysUtils,
   System.StrUtils,
   System.RTLConsts,
-  System.IOUtils,
-  Vcl.Clipbrd;
+  System.IOUtils;
 
 function ConvertOrderModifier(parser: TParser): Integer;
 begin
@@ -244,13 +247,17 @@ end;
 
 function Dfm2JSON(dfm: TStream): TJSONObject;
 var
-  parser: TParser;
+  Parser: TParser;
+  lFormatSettings: TFormatSettings;
 begin
-  parser := TParser.Create(dfm);
+  lFormatSettings := TFormatSettings.Create('en-US'); // do not localize
+  lFormatSettings.DecimalSeparator := '.';
+
+  Parser := TParser.Create(dfm, lFormatSettings);
   try
-    result := ConvertObject(parser);
+    result := ConvertObject(Parser);
   finally
-    parser.Free;
+    Parser.Free;
   end;
 end;
 
@@ -539,6 +546,33 @@ begin
     result := sl.Text;
   finally
     sl.free;
+  end;
+end;
+
+function DfmResourceToJson(ComponentStream: TStream): TJsonObject;
+var
+  TextStream: TStream;
+begin
+  TextStream := TMemoryStream.Create;
+  try
+    ObjectResourceToText(ComponentStream, TextStream);
+
+    TextStream.Position := 0;
+    Result := Dfm2JSON(TextStream);
+  finally
+    FreeAndNil(TextStream);
+  end;
+end;
+
+function DfmResourceToJson(const FileName: string): TJsonObject;
+var
+  FileStream: TFileStream;
+begin
+  FileStream := TFile.OpenRead(filename);
+  try
+    result := DfmResourceToJson(FileStream);
+  finally
+    FileStream.Free;
   end;
 end;
 
